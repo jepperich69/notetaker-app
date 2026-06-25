@@ -7,200 +7,357 @@
     <link rel="apple-touch-icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><rect width=%22100%22 height=%22100%22 rx=%2220%22 fill=%22%23007bff%22/><text y=%22.9em%22 font-size=%2280%22 x=%2250%%22 text-anchor=%22middle%22 fill=%22white%22>🎙️</text></svg>">
     <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><rect width=%22100%22 height=%22100%22 rx=%2220%22 fill=%22%23007bff%22/><text y=%22.9em%22 font-size=%2280%22 x=%2250%%22 text-anchor=%22middle%22 fill=%22white%22>🎙️</text></svg>">
     <style>
-        :root {
-            --primary: #007bff;
-            --bg: #f8f9fa;
-            --text: #333;
-        }
+        :root { --primary:#007bff; --bg:#f4f6f9; --card:#fff; --text:#222; --muted:#6b7280; --ok:#1aa251; --warn:#e08600; --err:#dc3545; --rec:#dc3545; }
+        * { box-sizing: border-box; }
         body {
             font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
-            background: var(--bg);
-            color: var(--text);
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            justify-content: center;
-            height: 100vh;
-            margin: 0;
-            padding: 20px;
-            box-sizing: border-box;
+            background: var(--bg); color: var(--text);
+            margin: 0; padding: 16px; padding-bottom: 40px;
+            -webkit-tap-highlight-color: transparent;
         }
-        .container {
-            width: 100%;
-            max-width: 400px;
-            text-align: center;
-        }
-        select, input, button {
-            width: 100%;
-            padding: 15px;
-            margin: 10px 0;
-            border-radius: 12px;
-            border: 1px solid #ddd;
-            font-size: 16px;
-            appearance: none;
-        }
-        button {
-            background: var(--primary);
-            color: white;
-            border: none;
-            font-weight: bold;
-            cursor: pointer;
-            transition: opacity 0.2s;
-        }
-        button:disabled {
-            opacity: 0.5;
-        }
-        .record-btn {
-            background: #dc3545;
-            height: 80px;
-            border-radius: 40px;
-            font-size: 20px;
-        }
-        .recording {
-            animation: pulse 1.5s infinite;
-        }
-        @keyframes pulse {
-            0% { transform: scale(1); }
-            50% { transform: scale(1.05); }
-            100% { transform: scale(1); }
-        }
-        #status {
-            margin-top: 20px;
-            font-size: 14px;
-            color: #666;
-        }
+        .container { width: 100%; max-width: 480px; margin: 0 auto; }
+        h2 { text-align: center; margin: 8px 0 16px; }
+        select, input, button { width: 100%; padding: 14px; margin: 8px 0; border-radius: 12px; border: 1px solid #d7dbe0; font-size: 16px; appearance: none; background: var(--card); }
+        button { background: var(--primary); color: #fff; border: none; font-weight: 600; cursor: pointer; transition: opacity .2s; }
+        button:disabled { opacity: .5; }
+        .record-btn { background: var(--rec); height: 76px; border-radius: 38px; font-size: 19px; }
+        .record-btn.recording { animation: pulse 1.5s infinite; }
+        @keyframes pulse { 0%{transform:scale(1)} 50%{transform:scale(1.04)} 100%{transform:scale(1)} }
+        #status { text-align: center; margin: 10px 0 4px; font-size: 14px; color: var(--muted); min-height: 18px; }
+        .bar { display: flex; gap: 8px; }
+        .bar button { font-size: 14px; padding: 10px; font-weight: 500; }
+        .btn-secondary { background: #eef1f5; color: #333; }
         .hidden { display: none; }
+        .small { font-size: 12px; color: var(--muted); text-align: center; margin-top: 6px; }
+        .link { color: var(--primary); text-decoration: underline; cursor: pointer; }
+        .list { margin-top: 18px; }
+        .list h3 { font-size: 14px; color: var(--muted); margin: 12px 4px 6px; text-transform: uppercase; letter-spacing: .04em; }
+        .item { background: var(--card); border: 1px solid #e6e9ee; border-radius: 12px; padding: 12px; margin: 8px 0; }
+        .item .top { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
+        .item .meta { font-size: 13px; color: var(--muted); margin-top: 4px; }
+        .item .err { font-size: 12px; color: var(--err); margin-top: 4px; word-break: break-word; }
+        .item .actions { display: flex; gap: 8px; margin-top: 10px; }
+        .item .actions button { margin: 0; padding: 9px; font-size: 13px; }
+        .badge { font-size: 12px; font-weight: 700; padding: 3px 9px; border-radius: 999px; white-space: nowrap; }
+        .b-recording { background: #fdecec; color: var(--rec); }
+        .b-pending   { background: #fff3e0; color: var(--warn); }
+        .b-uploading { background: #e7f0ff; color: var(--primary); }
+        .b-sent      { background: #e6f6ec; color: var(--ok); }
+        .b-failed    { background: #fdecec; color: var(--err); }
+        .title { font-weight: 600; font-size: 15px; }
     </style>
 </head>
 <body>
-
 <div class="container">
-    <h2>NoteTaker</h2>
-    
+    <h2>🎙️ NoteTaker</h2>
+
     <div id="setup-view">
-        <p>Enter your Read-Only PAT to begin:</p>
+        <p>Enter your Read-Only GitHub PAT to begin:</p>
         <input type="password" id="pat-input" placeholder="github_pat_...">
         <button onclick="savePat()">Connect</button>
     </div>
 
     <div id="app-view" class="hidden">
-        <select id="project-select">
-            <option value="">Select Project...</option>
-        </select>
-        
+        <select id="project-select"><option value="">Select Project...</option></select>
         <button id="record-btn" class="record-btn" onclick="toggleRecording()">Start Recording</button>
         <div id="status">Ready</div>
+        <div class="bar">
+            <button class="btn-secondary" onclick="processQueue(true)">Retry all</button>
+            <button class="btn-secondary" onclick="clearSent()">Clear sent</button>
+        </div>
+        <div class="small" id="storage"></div>
+        <div class="small"><span class="link" onclick="resetPat()">Reset PAT</span></div>
+
+        <div class="list" id="list"></div>
     </div>
 </div>
 
 <script>
-    let mediaRecorder;
-    let audioChunks = [];
-    let isRecording = false;
+    "use strict";
 
-    const PROXY_URL = "https://dpslhidnmifmbmrhugea.supabase.co/functions/v1/notetaker-proxy";
+    const PROXY_URL  = "https://dpslhidnmifmbmrhugea.supabase.co/functions/v1/notetaker-proxy";
     const GITHUB_USER = "jepperich69";
     const GITHUB_REPO = "notetaker-inbox";
+    const CHUNK_MS = 5000;       // persist audio to disk every 5s while recording
+    const RETRY_INTERVAL_MS = 20000;
 
-    // Initialization
-    window.onload = () => {
-        const pat = localStorage.getItem('notetaker_pat');
-        if (pat) showApp();
+    // ---------- IndexedDB ----------
+    const dbp = openDB();
+    function openDB() {
+        return new Promise((res, rej) => {
+            const r = indexedDB.open("notetaker", 1);
+            r.onupgradeneeded = e => {
+                const db = e.target.result;
+                if (!db.objectStoreNames.contains("recordings")) db.createObjectStore("recordings", { keyPath: "id" });
+                if (!db.objectStoreNames.contains("chunks")) {
+                    const cs = db.createObjectStore("chunks", { keyPath: "k", autoIncrement: true });
+                    cs.createIndex("recId", "recId", { unique: false });
+                }
+            };
+            r.onsuccess = () => res(r.result);
+            r.onerror = () => rej(r.error);
+        });
+    }
+    function reqP(req){ return new Promise((res,rej)=>{ req.onsuccess=()=>res(req.result); req.onerror=()=>rej(req.error); }); }
+    function txDone(tx){ return new Promise((res,rej)=>{ tx.oncomplete=()=>res(); tx.onerror=()=>rej(tx.error); tx.onabort=()=>rej(tx.error); }); }
+    async function putRec(rec){ const db=await dbp; const tx=db.transaction("recordings","readwrite"); tx.objectStore("recordings").put(rec); await txDone(tx); return rec; }
+    async function getAllRecs(){ const db=await dbp; return reqP(db.transaction("recordings").objectStore("recordings").getAll()); }
+    async function delRec(id){ const db=await dbp; const tx=db.transaction("recordings","readwrite"); tx.objectStore("recordings").delete(id); await txDone(tx); }
+    async function addChunk(recId, blob){ const db=await dbp; const tx=db.transaction("chunks","readwrite"); tx.objectStore("chunks").add({ recId, blob }); return txDone(tx); }
+    async function getChunks(recId){ const db=await dbp; return reqP(db.transaction("chunks").objectStore("chunks").index("recId").getAll(recId)); }
+    async function delChunks(recId){
+        const db=await dbp; const tx=db.transaction("chunks","readwrite");
+        const idx=tx.objectStore("chunks").index("recId");
+        const cur=idx.openCursor(IDBKeyRange.only(recId));
+        cur.onsuccess=e=>{ const c=e.target.result; if(c){ c.delete(); c.continue(); } };
+        return txDone(tx);
+    }
+
+    // ---------- State ----------
+    let mediaRecorder=null, mediaStream=null, isRecording=false, currentRec=null;
+    let writeChain=Promise.resolve(), tickTimer=null, wakeLock=null, processing=false;
+
+    function uuid(){ return (crypto.randomUUID ? crypto.randomUUID() : (Date.now()+"-"+Math.random().toString(16).slice(2))); }
+    function pickMime(){ const o=["audio/webm;codecs=opus","audio/webm","audio/mp4"]; for(const m of o){ if(window.MediaRecorder && MediaRecorder.isTypeSupported(m)) return m; } return ""; }
+    function baseType(m){ return (m && m.indexOf("mp4")>=0) ? "audio/mp4" : "audio/webm"; }
+    function extFor(ct){ return ct==="audio/mp4" ? "m4a" : "webm"; }
+    function fmtSize(b){ if(!b && b!==0) return ""; if(b<1024) return b+" B"; if(b<1048576) return (b/1024).toFixed(0)+" KB"; return (b/1048576).toFixed(1)+" MB"; }
+    function fmtDur(ms){ if(!ms) return "0:00"; const s=Math.round(ms/1000); return Math.floor(s/60)+":"+String(s%60).padStart(2,"0"); }
+    function fmtTime(ts){ try{ return new Date(ts).toLocaleString(); }catch(e){ return ""; } }
+
+    // ---------- PAT / projects ----------
+    window.onload = async () => {
+        const pat = localStorage.getItem("notetaker_pat");
+        if (pat) await showApp();
+        window.addEventListener("online", () => processQueue());
+        document.addEventListener("visibilitychange", () => { if (document.visibilityState==="visible" && isRecording) acquireWake(); });
+        setInterval(() => processQueue(), RETRY_INTERVAL_MS);
     };
+    function savePat(){ const pat=document.getElementById("pat-input").value.trim(); if(pat){ localStorage.setItem("notetaker_pat", pat); showApp(); } }
+    function resetPat(){ if(confirm("Forget the saved PAT on this device? Recordings are kept.")){ localStorage.removeItem("notetaker_pat"); location.reload(); } }
 
-    function savePat() {
-        const pat = document.getElementById('pat-input').value;
-        if (pat) {
-            localStorage.setItem('notetaker_pat', pat);
-            showApp();
-        }
+    async function showApp(){
+        document.getElementById("setup-view").classList.add("hidden");
+        document.getElementById("app-view").classList.remove("hidden");
+        await recoverInterrupted();
+        await loadProjects();
+        renderList();
+        updateStorage();
+        processQueue();
     }
-
-    async function showApp() {
-        document.getElementById('setup-view').classList.add('hidden');
-        document.getElementById('app-view').classList.remove('hidden');
-        loadProjects();
-    }
-
-    async function loadProjects() {
-        const pat = localStorage.getItem('notetaker_pat');
+    async function loadProjects(){
+        const pat = localStorage.getItem("notetaker_pat");
         try {
-            const res = await fetch(`https://api.github.com/repos/${GITHUB_USER}/${GITHUB_REPO}/contents/projects.json`, {
-                headers: { 'Authorization': `token ${pat}` }
-            });
+            const res = await fetch(`https://api.github.com/repos/${GITHUB_USER}/${GITHUB_REPO}/contents/projects.json`, { headers:{ Authorization:`token ${pat}` } });
             const data = await res.json();
             const projects = JSON.parse(atob(data.content));
-            
-            const select = document.getElementById('project-select');
+            const select = document.getElementById("project-select");
+            const last = localStorage.getItem("notetaker_last_project") || "";
+            select.innerHTML = '<option value="">Select Project...</option>';
             projects.forEach(p => {
-                const opt = document.createElement('option');
-                opt.value = p.key;
-                opt.textContent = p.name;
+                const opt=document.createElement("option");
+                opt.value=p.key; opt.textContent=p.name; opt.dataset.name=p.name;
+                if(p.key===last) opt.selected=true;
                 select.appendChild(opt);
             });
-        } catch (e) {
-            document.getElementById('status').textContent = "Error loading projects. Check PAT.";
+            select.onchange = () => localStorage.setItem("notetaker_last_project", select.value);
+        } catch(e) {
+            setStatus("Error loading projects. Check PAT / connection.");
+        }
+    }
+    function setStatus(t){ document.getElementById("status").textContent = t; }
+
+    // ---------- Recording ----------
+    async function toggleRecording(){
+        if (isRecording) { stopRecording(); return; }
+        const sel = document.getElementById("project-select");
+        const project = sel.value;
+        if (!project) { alert("Please select a project first!"); return; }
+        const projectName = sel.options[sel.selectedIndex] ? sel.options[sel.selectedIndex].dataset.name : project;
+
+        let stream;
+        try { stream = await navigator.mediaDevices.getUserMedia({ audio: true }); }
+        catch(e){ setStatus("Microphone permission denied."); return; }
+
+        const mime = pickMime();
+        const contentType = baseType(mime);
+        try { mediaRecorder = mime ? new MediaRecorder(stream, { mimeType: mime }) : new MediaRecorder(stream); }
+        catch(e){ mediaRecorder = new MediaRecorder(stream); }
+        mediaStream = stream;
+
+        currentRec = { id: uuid(), project, projectName, contentType, status:"recording",
+                       createdAt: Date.now(), startedAt: Date.now(), attempts:0, lastError:null, durationMs:0 };
+        await putRec(currentRec);
+
+        writeChain = Promise.resolve();
+        mediaRecorder.ondataavailable = e => {
+            if (e.data && e.data.size) { const rid=currentRec.id; writeChain = writeChain.then(()=>addChunk(rid, e.data)).catch(()=>{}); }
+        };
+        mediaRecorder.onstop = onRecorderStop;
+
+        mediaRecorder.start(CHUNK_MS);
+        isRecording = true;
+        acquireWake();
+        const btn = document.getElementById("record-btn");
+        btn.textContent = "Stop & Save"; btn.classList.add("recording");
+        renderList();
+        tickTimer = setInterval(() => {
+            if (currentRec) { currentRec.durationMs = Date.now()-currentRec.startedAt; }
+            setStatus("Recording... " + fmtDur(currentRec ? currentRec.durationMs : 0) + "  (audio is being saved live)");
+            renderList();
+        }, 1000);
+    }
+
+    function stopRecording(){
+        const btn = document.getElementById("record-btn");
+        btn.textContent = "Start Recording"; btn.classList.remove("recording");
+        isRecording = false;
+        if (tickTimer) { clearInterval(tickTimer); tickTimer=null; }
+        try { mediaRecorder && mediaRecorder.stop(); } catch(e){}
+    }
+
+    async function onRecorderStop(){
+        releaseWake();
+        if (mediaStream) { mediaStream.getTracks().forEach(t=>t.stop()); mediaStream=null; }
+        const rec = currentRec; currentRec = null;
+        if (!rec) return;
+        await writeChain;
+        await finalizeRecording(rec);
+        setStatus("Saved. Sending...");
+        renderList(); updateStorage();
+        processQueue();
+    }
+
+    // assemble persisted chunks into the final blob, mark pending
+    async function finalizeRecording(rec){
+        const chunks = await getChunks(rec.id);
+        const blob = new Blob(chunks.map(c=>c.blob), { type: rec.contentType });
+        rec.blob = blob; rec.size = blob.size;
+        rec.durationMs = Date.now() - rec.startedAt;
+        rec.status = blob.size > 0 ? "pending" : "failed";
+        if (blob.size === 0) rec.lastError = "No audio captured.";
+        await putRec(rec);
+        await delChunks(rec.id);
+        return rec;
+    }
+
+    // recover any recording left mid-flight by a tab crash / phone sleep
+    async function recoverInterrupted(){
+        const recs = await getAllRecs();
+        for (const r of recs) {
+            if (r.status === "recording") {
+                const chunks = await getChunks(r.id);
+                if (chunks.length) {
+                    r.blob = new Blob(chunks.map(c=>c.blob), { type: r.contentType || "audio/webm" });
+                    r.size = r.blob.size; r.status = "pending"; r.recovered = true;
+                    await putRec(r); await delChunks(r.id);
+                } else {
+                    r.status = "failed"; r.lastError = "Interrupted before any audio was saved.";
+                    await putRec(r);
+                }
+            }
         }
     }
 
-    async function toggleRecording() {
-        const btn = document.getElementById('record-btn');
-        if (!isRecording) {
-            const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-            mediaRecorder = new MediaRecorder(stream);
-            audioChunks = [];
-            
-            mediaRecorder.ondataavailable = e => audioChunks.push(e.data);
-            mediaRecorder.onstop = uploadAudio;
-            
-            mediaRecorder.start();
-            btn.textContent = "Stop & Send";
-            btn.classList.add('recording');
-            isRecording = true;
-            document.getElementById('status').textContent = "Recording...";
-        } else {
-            mediaRecorder.stop();
-            btn.textContent = "Start Recording";
-            btn.classList.remove('recording');
-            isRecording = false;
-        }
+    // ---------- Upload queue ----------
+    async function processQueue(force){
+        if (processing) return;
+        processing = true;
+        try {
+            const pat = localStorage.getItem("notetaker_pat");
+            if (!pat) return;
+            let recs = await getAllRecs();
+            recs = recs.filter(r => (r.status==="pending" || r.status==="failed") && r.blob)
+                       .sort((a,b)=>a.createdAt-b.createdAt);
+            for (const rec of recs) {
+                if (!navigator.onLine && !force) break;
+                await uploadOne(rec, pat);
+            }
+        } finally { processing = false; updateStorage(); }
     }
 
-    async function uploadAudio() {
-        const status = document.getElementById('status');
-        const project = document.getElementById('project-select').value;
-        const pat = localStorage.getItem('notetaker_pat');
-
-        if (!project) {
-            alert("Please select a project first!");
-            return;
-        }
-
-        status.textContent = "Uploading...";
-        const blob = new Blob(audioChunks, { type: 'audio/webm' });
-
+    async function uploadOne(rec, pat){
+        rec.status = "uploading"; await putRec(rec); renderList();
         try {
             const res = await fetch(PROXY_URL, {
-                method: 'POST',
-                headers: {
-                    'Authorization': `Bearer ${pat}`,
-                    'X-NoteTaker-Project': project,
-                    'Content-Type': 'audio/webm'
-                },
-                body: blob
+                method: "POST",
+                headers: { "Authorization": `Bearer ${pat}`, "X-NoteTaker-Project": rec.project, "Content-Type": rec.contentType || "audio/webm" },
+                body: rec.blob
             });
-
-            const result = await res.json();
-            if (result.ok) {
-                status.textContent = "Sent successfully!";
-                setTimeout(() => status.textContent = "Ready", 3000);
+            let result = null; try { result = await res.json(); } catch(e){}
+            if (res.ok && result && result.ok) {
+                rec.status = "sent"; rec.sentAt = Date.now(); rec.lastError = null; rec.filename = result.filename || rec.filename;
+                await putRec(rec);
             } else {
-                status.textContent = "Upload failed: " + result.code;
+                throw new Error((result && result.code) ? result.code : ("HTTP " + res.status));
             }
-        } catch (e) {
-            status.textContent = "Network error.";
+        } catch(e) {
+            rec.status = "failed"; rec.attempts = (rec.attempts||0)+1; rec.lastError = String(e && e.message ? e.message : e);
+            await putRec(rec);
         }
+        renderList();
     }
+
+    async function resend(id){ const recs=await getAllRecs(); const r=recs.find(x=>x.id===id); if(r){ r.status="pending"; await putRec(r); processQueue(true); } }
+    async function downloadRec(id){
+        const recs=await getAllRecs(); const r=recs.find(x=>x.id===id); if(!r||!r.blob) return;
+        const url=URL.createObjectURL(r.blob); const a=document.createElement("a");
+        a.href=url; a.download=`note-${r.createdAt}.${extFor(r.contentType)}`; document.body.appendChild(a); a.click();
+        a.remove(); setTimeout(()=>URL.revokeObjectURL(url), 4000);
+    }
+    async function removeRec(id){
+        const recs=await getAllRecs(); const r=recs.find(x=>x.id===id);
+        if (r && r.status!=="sent" && !confirm("Delete this recording? It has NOT been sent and cannot be recovered.")) return;
+        await delRec(id); await delChunks(id); renderList(); updateStorage();
+    }
+    async function clearSent(){
+        const recs=await getAllRecs(); const sent=recs.filter(r=>r.status==="sent");
+        if (!sent.length) return;
+        if (!confirm(`Remove ${sent.length} sent recording(s) from this device?`)) return;
+        for (const r of sent){ await delRec(r.id); await delChunks(r.id); }
+        renderList(); updateStorage();
+    }
+
+    // ---------- UI ----------
+    async function renderList(){
+        const recs = (await getAllRecs()).sort((a,b)=>b.createdAt-a.createdAt);
+        const el = document.getElementById("list");
+        if (!recs.length) { el.innerHTML = '<div class="small">No recordings yet.</div>'; return; }
+        const order = { recording:0, uploading:1, pending:2, failed:3, sent:4 };
+        recs.sort((a,b)=>(order[a.status]-order[b.status]) || (b.createdAt-a.createdAt));
+        el.innerHTML = "<h3>Recordings</h3>" + recs.map(r => {
+            const badge = `<span class="badge b-${r.status}">${r.status.toUpperCase()}</span>`;
+            const dur = fmtDur(r.durationMs), size = r.size!=null ? " · "+fmtSize(r.size) : "";
+            const att = (r.attempts ? " · "+r.attempts+" attempt"+(r.attempts>1?"s":"") : "");
+            const rec = (r.recovered ? " · recovered" : "");
+            const err = r.status==="failed" && r.lastError ? `<div class="err">⚠ ${r.lastError}</div>` : "";
+            let actions = "";
+            if (r.status==="pending" || r.status==="failed") actions += `<button onclick="resend('${r.id}')">Send now</button>`;
+            if (r.blob) actions += `<button class="btn-secondary" onclick="downloadRec('${r.id}')">Download</button>`;
+            actions += `<button class="btn-secondary" onclick="removeRec('${r.id}')">Delete</button>`;
+            return `<div class="item">
+                <div class="top"><span class="title">${escapeHtml(r.projectName||r.project||"")}</span>${badge}</div>
+                <div class="meta">${fmtTime(r.createdAt)} · ${dur}${size}${att}${rec}</div>
+                ${err}
+                <div class="actions">${actions}</div>
+            </div>`;
+        }).join("");
+    }
+    function escapeHtml(s){ return String(s).replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c])); }
+
+    async function updateStorage(){
+        const recs = await getAllRecs();
+        const unsent = recs.filter(r => r.status!=="sent" && r.status!=="recording").length;
+        let txt = unsent ? `${unsent} not yet sent` : "All recordings sent";
+        if (navigator.storage && navigator.storage.estimate) {
+            try { const q = await navigator.storage.estimate(); if (q.usage!=null) txt += ` · ${fmtSize(q.usage)} on device`; } catch(e){}
+        }
+        const s=document.getElementById("storage"); if (s) s.textContent = txt;
+    }
+
+    // ---------- Wake lock ----------
+    async function acquireWake(){ try { if ("wakeLock" in navigator) { wakeLock = await navigator.wakeLock.request("screen"); } } catch(e){} }
+    function releaseWake(){ try { if (wakeLock) { wakeLock.release(); wakeLock=null; } } catch(e){} }
 </script>
 </body>
 </html>
