@@ -83,6 +83,8 @@
     const PROXY_URL  = "https://dpslhidnmifmbmrhugea.supabase.co/functions/v1/notetaker-proxy";
     const GITHUB_USER = "jepperich69";
     const GITHUB_REPO = "notetaker-inbox";
+    const GENERAL_KEY = "__general__";
+    const GENERAL_NAME = "General (no project)";
     const CHUNK_MS = 5000;       // persist audio to disk every 5s while recording
     const RETRY_INTERVAL_MS = 20000;
 
@@ -170,6 +172,10 @@
                 if(p.key===last) opt.selected=true;
                 select.appendChild(opt);
             });
+            const gopt = document.createElement("option");
+            gopt.value = GENERAL_KEY; gopt.textContent = GENERAL_NAME; gopt.dataset.name = "General";
+            if (last === GENERAL_KEY) gopt.selected = true;
+            select.appendChild(gopt);
             select.onchange = () => localStorage.setItem("notetaker_last_project", select.value);
         } catch(e) {
             setStatus("Error loading projects. Check PAT / connection.");
@@ -364,7 +370,8 @@
     // ---------- Import / share-target intake ----------
     function projectOptionsHtml(selKey){
         return '<option value="">Select project...</option>' + PROJECTS.map(p =>
-            `<option value="${escapeHtml(p.key)}" ${p.key===selKey?"selected":""}>${escapeHtml(p.name)}</option>`).join("");
+            `<option value="${escapeHtml(p.key)}" ${p.key===selKey?"selected":""}>${escapeHtml(p.name)}</option>`).join("") +
+            `<option value="${GENERAL_KEY}" ${selKey===GENERAL_KEY?"selected":""}>${GENERAL_NAME}</option>`;
     }
     async function onFilePicked(e){
         const f = e.target.files && e.target.files[0];
