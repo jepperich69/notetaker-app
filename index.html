@@ -6,6 +6,8 @@
     <title>NoteTaker</title>
     <link rel="apple-touch-icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><rect width=%22100%22 height=%22100%22 rx=%2220%22 fill=%22%23007bff%22/><text y=%22.9em%22 font-size=%2280%22 x=%2250%%22 text-anchor=%22middle%22 fill=%22white%22>🎙️</text></svg>">
     <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><rect width=%22100%22 height=%22100%22 rx=%2220%22 fill=%22%23007bff%22/><text y=%22.9em%22 font-size=%2280%22 x=%2250%%22 text-anchor=%22middle%22 fill=%22white%22>🎙️</text></svg>">
+    <link rel="manifest" href="manifest.json">
+    <meta name="theme-color" content="#007bff">
     <style>
         :root { --primary:#007bff; --bg:#f4f6f9; --card:#fff; --text:#222; --muted:#6b7280; --ok:#1aa251; --warn:#e08600; --err:#dc3545; --rec:#dc3545; }
         * { box-sizing: border-box; }
@@ -44,6 +46,7 @@
         .b-uploading { background: #e7f0ff; color: var(--primary); }
         .b-sent      { background: #e6f6ec; color: var(--ok); }
         .b-failed    { background: #fdecec; color: var(--err); }
+        .b-unassigned{ background: #efe9fe; color: #6d28d9; }
         .title { font-weight: 600; font-size: 15px; }
     </style>
 </head>
@@ -65,6 +68,8 @@
             <button class="btn-secondary" onclick="processQueue(true)">Retry all</button>
             <button class="btn-secondary" onclick="clearSent()">Clear sent</button>
         </div>
+        <input id="file-input" type="file" accept="audio/*,video/webm,video/mp4" class="hidden" onchange="onFilePicked(event)">
+        <button class="btn-secondary" onclick="document.getElementById('file-input').click()">Upload a recording (from your recorder app)</button>
         <div class="small" id="storage"></div>
         <div class="small"><span class="link" onclick="resetPat()">Reset PAT</span></div>
 
@@ -116,6 +121,7 @@
     // ---------- State ----------
     let mediaRecorder=null, mediaStream=null, isRecording=false, currentRec=null;
     let writeChain=Promise.resolve(), tickTimer=null, wakeLock=null, processing=false;
+    let PROJECTS = [];
 
     function uuid(){ return (crypto.randomUUID ? crypto.randomUUID() : (Date.now()+"-"+Math.random().toString(16).slice(2))); }
     function pickMime(){ const o=["audio/webm;codecs=opus","audio/webm","audio/mp4"]; for(const m of o){ if(window.MediaRecorder && MediaRecorder.isTypeSupported(m)) return m; } return ""; }
@@ -127,8 +133,11 @@
 
     // ---------- PAT / projects ----------
     window.onload = async () => {
+        if ("serviceWorker" in navigator) { try { await navigator.serviceWorker.register("sw.js"); } catch(e){} }
+        if (location.search.indexOf("shared") >= 0) { window.__shared = true; try { history.replaceState({}, "", location.pathname); } catch(e){} }
         const pat = localStorage.getItem("notetaker_pat");
         if (pat) await showApp();
+        if (window.__shared) setStatus("Shared recording received - choose its project below, then tap Assign & send.");
         window.addEventListener("online", () => processQueue());
         document.addEventListener("visibilitychange", () => { if (document.visibilityState==="visible" && isRecording) acquireWake(); });
         setInterval(() => processQueue(), RETRY_INTERVAL_MS);
@@ -151,6 +160,7 @@
             const res = await fetch(`https://api.github.com/repos/${GITHUB_USER}/${GITHUB_REPO}/contents/projects.json`, { headers:{ Authorization:`token ${pat}` } });
             const data = await res.json();
             const projects = JSON.parse(atob(data.content));
+            PROJECTS = projects;
             const select = document.getElementById("project-select");
             const last = localStorage.getItem("notetaker_last_project") || "";
             select.innerHTML = '<option value="">Select Project...</option>';
@@ -323,27 +333,68 @@
         const recs = (await getAllRecs()).sort((a,b)=>b.createdAt-a.createdAt);
         const el = document.getElementById("list");
         if (!recs.length) { el.innerHTML = '<div class="small">No recordings yet.</div>'; return; }
-        const order = { recording:0, uploading:1, pending:2, failed:3, sent:4 };
+        const order = { recording:0, unassigned:1, uploading:2, pending:3, failed:4, sent:5 };
         recs.sort((a,b)=>(order[a.status]-order[b.status]) || (b.createdAt-a.createdAt));
         el.innerHTML = "<h3>Recordings</h3>" + recs.map(r => {
-            const badge = `<span class="badge b-${r.status}">${r.status.toUpperCase()}</span>`;
-            const dur = fmtDur(r.durationMs), size = r.size!=null ? " · "+fmtSize(r.size) : "";
+            const label = r.status==="unassigned" ? "UNASSIGNED" : r.status.toUpperCase();
+            const badge = `<span class="badge b-${r.status}">${label}</span>`;
+            const durTxt = r.durationMs ? fmtDur(r.durationMs)+" · " : "";
+            const size = r.size!=null ? fmtSize(r.size) : "";
             const att = (r.attempts ? " · "+r.attempts+" attempt"+(r.attempts>1?"s":"") : "");
-            const rec = (r.recovered ? " · recovered" : "");
+            const tag = r.recovered ? " · recovered" : (r.source==="share" ? " · shared" : (r.source==="import" ? " · imported" : ""));
             const err = r.status==="failed" && r.lastError ? `<div class="err">⚠ ${r.lastError}</div>` : "";
+            const title = r.status==="unassigned" ? "Unassigned recording" : (r.projectName||r.project||"Recording");
+            const assign = r.status==="unassigned" ? `<select id="psel-${r.id}">${projectOptionsHtml(r.project||"")}</select>` : "";
             let actions = "";
+            if (r.status==="unassigned") actions += `<button onclick="assignSend('${r.id}')">Assign & send</button>`;
             if (r.status==="pending" || r.status==="failed") actions += `<button onclick="resend('${r.id}')">Send now</button>`;
             if (r.blob) actions += `<button class="btn-secondary" onclick="downloadRec('${r.id}')">Download</button>`;
             actions += `<button class="btn-secondary" onclick="removeRec('${r.id}')">Delete</button>`;
             return `<div class="item">
-                <div class="top"><span class="title">${escapeHtml(r.projectName||r.project||"")}</span>${badge}</div>
-                <div class="meta">${fmtTime(r.createdAt)} · ${dur}${size}${att}${rec}</div>
+                <div class="top"><span class="title">${escapeHtml(title)}</span>${badge}</div>
+                <div class="meta">${fmtTime(r.createdAt)} · ${durTxt}${size}${att}${tag}</div>
                 ${err}
+                ${assign}
                 <div class="actions">${actions}</div>
             </div>`;
         }).join("");
     }
     function escapeHtml(s){ return String(s).replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c])); }
+
+    // ---------- Import / share-target intake ----------
+    function projectOptionsHtml(selKey){
+        return '<option value="">Select project...</option>' + PROJECTS.map(p =>
+            `<option value="${escapeHtml(p.key)}" ${p.key===selKey?"selected":""}>${escapeHtml(p.name)}</option>`).join("");
+    }
+    async function onFilePicked(e){
+        const f = e.target.files && e.target.files[0];
+        e.target.value = "";
+        if (!f) return;
+        const sel = document.getElementById("project-select");
+        const key = sel.value;
+        const name = key && sel.options[sel.selectedIndex] ? sel.options[sel.selectedIndex].dataset.name : "";
+        await intakeFile(f, key, name, "import");
+        setStatus(key ? "Imported. Sending..." : "Imported - choose a project below, then tap Assign & send.");
+    }
+    async function intakeFile(file, project, projectName, source){
+        const ct = (/(mp4|m4a|aac)/i.test(file.type) || /\.(m4a|mp4|aac)$/i.test(file.name||"")) ? "audio/mp4" : "audio/webm";
+        const rec = { id: uuid(), project: project||"", projectName: projectName||"", contentType: ct,
+                      status: project ? "pending" : "unassigned", createdAt: Date.now(), startedAt: Date.now(),
+                      attempts: 0, lastError: null, durationMs: 0, size: file.size, blob: file, source: source||"import" };
+        await putRec(rec);
+        renderList(); updateStorage();
+        if (project) processQueue(true);
+    }
+    async function assignSend(id){
+        const sel = document.getElementById("psel-"+id);
+        const key = sel ? sel.value : "";
+        if (!key) { alert("Pick a project first."); return; }
+        const p = PROJECTS.find(x => x.key === key);
+        const recs = await getAllRecs(); const r = recs.find(x => x.id === id);
+        if (!r) return;
+        r.project = key; r.projectName = p ? p.name : key; r.status = "pending";
+        await putRec(r); renderList(); processQueue(true);
+    }
 
     async function updateStorage(){
         const recs = await getAllRecs();
