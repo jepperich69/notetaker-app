@@ -161,7 +161,12 @@
         try {
             const res = await fetch(`https://api.github.com/repos/${GITHUB_USER}/${GITHUB_REPO}/contents/projects.json`, { headers:{ Authorization:`token ${pat}` } });
             const data = await res.json();
-            const projects = JSON.parse(atob(data.content));
+            if (!res.ok) throw new Error(data.message || `GitHub returned ${res.status}`);
+            // Decode GitHub's base64 as UTF-8 and tolerate a BOM from older
+            // PowerShell writers. atob() alone produces mojibake for non-ASCII
+            // project names and leaves a BOM that JSON.parse rejects.
+            const bytes = Uint8Array.from(atob(data.content.replace(/\s/g, "")), c => c.charCodeAt(0));
+            const projects = JSON.parse(new TextDecoder().decode(bytes).replace(/^\uFEFF/, ""));
             PROJECTS = projects;
             const select = document.getElementById("project-select");
             const last = localStorage.getItem("notetaker_last_project") || "";
