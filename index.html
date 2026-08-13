@@ -24,6 +24,7 @@
         button:disabled { opacity: .5; }
         .record-btn { background: var(--rec); height: 76px; border-radius: 38px; font-size: 19px; }
         .record-btn.recording { animation: pulse 1.5s infinite; }
+        .pause-btn { background: var(--warn); }
         @keyframes pulse { 0%{transform:scale(1)} 50%{transform:scale(1.04)} 100%{transform:scale(1)} }
         #status { text-align: center; margin: 10px 0 4px; font-size: 14px; color: var(--muted); min-height: 18px; }
         .bar { display: flex; gap: 8px; }
@@ -63,6 +64,7 @@
     <div id="app-view" class="hidden">
         <select id="project-select"><option value="">Select Project...</option></select>
         <button id="record-btn" class="record-btn" onclick="toggleRecording()">Start Recording</button>
+        <button id="pause-btn" class="pause-btn hidden" onclick="togglePause()">Pause</button>
         <div id="status">Ready</div>
         <div class="bar">
             <button class="btn-secondary" onclick="processQueue(true)">Retry all</button>
@@ -121,7 +123,7 @@
     }
 
     // ---------- State ----------
-    let mediaRecorder=null, mediaStream=null, isRecording=false, currentRec=null;
+    let mediaRecorder=null, mediaStream=null, isRecording=false, isPaused=false, currentRec=null;
     let writeChain=Promise.resolve(), tickTimer=null, wakeLock=null, processing=false;
     let PROJECTS = [];
 
@@ -218,21 +220,46 @@
 
         mediaRecorder.start(CHUNK_MS);
         isRecording = true;
+        isPaused = false;
         acquireWake();
         const btn = document.getElementById("record-btn");
         btn.textContent = "Stop & Save"; btn.classList.add("recording");
+        const pauseBtn = document.getElementById("pause-btn");
+        pauseBtn.textContent = "Pause"; pauseBtn.classList.remove("hidden");
         renderList();
         tickTimer = setInterval(() => {
-            if (currentRec) { currentRec.durationMs = Date.now()-currentRec.startedAt; }
-            setStatus("Recording... " + fmtDur(currentRec ? currentRec.durationMs : 0) + "  (audio is being saved live)");
+            if (currentRec && !isPaused) { currentRec.durationMs = Date.now()-currentRec.startedAt-(currentRec.totalPausedMs||0); }
+            setStatus((isPaused ? "Paused " : "Recording... ") + fmtDur(currentRec ? currentRec.durationMs : 0) + (isPaused ? "" : "  (audio is being saved live)"));
             renderList();
         }, 1000);
+    }
+
+    function togglePause(){
+        if (!isRecording || !mediaRecorder) return;
+        const pauseBtn = document.getElementById("pause-btn");
+        if (isPaused) {
+            currentRec.totalPausedMs = (currentRec.totalPausedMs||0) + Date.now()-currentRec.pausedAt;
+            currentRec.pausedAt = null;
+            mediaRecorder.resume();
+            isPaused = false;
+            pauseBtn.textContent = "Pause";
+            setStatus("Recording... " + fmtDur(currentRec.durationMs));
+        } else {
+            mediaRecorder.pause();
+            currentRec.pausedAt = Date.now();
+            isPaused = true;
+            pauseBtn.textContent = "Continue";
+            setStatus("Paused " + fmtDur(currentRec.durationMs));
+        }
     }
 
     function stopRecording(){
         const btn = document.getElementById("record-btn");
         btn.textContent = "Start Recording"; btn.classList.remove("recording");
+        document.getElementById("pause-btn").classList.add("hidden");
+        if (isPaused && currentRec) currentRec.totalPausedMs = (currentRec.totalPausedMs||0) + Date.now()-currentRec.pausedAt;
         isRecording = false;
+        isPaused = false;
         if (tickTimer) { clearInterval(tickTimer); tickTimer=null; }
         try { mediaRecorder && mediaRecorder.stop(); } catch(e){}
     }
@@ -254,7 +281,7 @@
         const chunks = await getChunks(rec.id);
         const blob = new Blob(chunks.map(c=>c.blob), { type: rec.contentType });
         rec.blob = blob; rec.size = blob.size;
-        rec.durationMs = Date.now() - rec.startedAt;
+        rec.durationMs = Date.now() - rec.startedAt - (rec.totalPausedMs||0);
         rec.status = blob.size > 0 ? "pending" : "failed";
         if (blob.size === 0) rec.lastError = "No audio captured.";
         await putRec(rec);
