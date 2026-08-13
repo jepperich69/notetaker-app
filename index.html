@@ -25,6 +25,9 @@
         .record-btn { background: var(--rec); height: 76px; border-radius: 38px; font-size: 19px; }
         .record-btn.recording { animation: pulse 1.5s infinite; }
         .pause-btn { background: var(--warn); }
+        .finish-bar { display:flex; gap:8px; }
+        .finish-bar button { margin-top:0; }
+        .result { margin-top:10px; padding:10px; background:#f7f9fc; border-radius:10px; font-size:13px; white-space:pre-wrap; max-height:320px; overflow:auto; }
         @keyframes pulse { 0%{transform:scale(1)} 50%{transform:scale(1.04)} 100%{transform:scale(1)} }
         #status { text-align: center; margin: 10px 0 4px; font-size: 14px; color: var(--muted); min-height: 18px; }
         .bar { display: flex; gap: 8px; }
@@ -46,6 +49,7 @@
         .b-pending   { background: #fff3e0; color: var(--warn); }
         .b-uploading { background: #e7f0ff; color: var(--primary); }
         .b-sent      { background: #e6f6ec; color: var(--ok); }
+        .b-ready     { background: #e6f6ec; color: var(--ok); }
         .b-failed    { background: #fdecec; color: var(--err); }
         .b-unassigned{ background: #efe9fe; color: #6d28d9; }
         .title { font-weight: 600; font-size: 15px; }
@@ -65,6 +69,10 @@
         <select id="project-select"><option value="">Select Project...</option></select>
         <button id="record-btn" class="record-btn" onclick="toggleRecording()">Start Recording</button>
         <button id="pause-btn" class="pause-btn hidden" onclick="togglePause()">Pause</button>
+        <div id="finish-bar" class="finish-bar hidden">
+            <button onclick="finishRecording()">Finish and process</button>
+            <button class="btn-secondary" onclick="addAnotherPart()">Add another part</button>
+        </div>
         <div id="status">Ready</div>
         <div class="bar">
             <button class="btn-secondary" onclick="processQueue(true)">Retry all</button>
@@ -89,6 +97,7 @@
     const GENERAL_NAME = "General (no project)";
     const CHUNK_MS = 5000;       // persist audio to disk every 5s while recording
     const RETRY_INTERVAL_MS = 20000;
+    const RESULT_POLL_MS = 15000;
 
     // ---------- IndexedDB ----------
     const dbp = openDB();
@@ -145,6 +154,7 @@
         window.addEventListener("online", () => processQueue());
         document.addEventListener("visibilitychange", () => { if (document.visibilityState==="visible" && isRecording) acquireWake(); });
         setInterval(() => processQueue(), RETRY_INTERVAL_MS);
+        setInterval(() => checkResults(), RESULT_POLL_MS);
     };
     function savePat(){ const pat=document.getElementById("pat-input").value.trim(); if(pat){ localStorage.setItem("notetaker_pat", pat); showApp(); } }
     function resetPat(){ if(confirm("Forget the saved PAT on this device? Recordings are kept.")){ localStorage.removeItem("notetaker_pat"); location.reload(); } }
@@ -157,6 +167,7 @@
         renderList();
         updateStorage();
         processQueue();
+        checkResults();
     }
     async function loadProjects(){
         const pat = localStorage.getItem("notetaker_pat");
@@ -192,7 +203,7 @@
 
     // ---------- Recording ----------
     async function toggleRecording(){
-        if (isRecording) { stopRecording(); return; }
+        if (isRecording) { offerFinish(); return; }
         const sel = document.getElementById("project-select");
         const project = sel.value;
         if (!project) { alert("Please select a project first!"); return; }
@@ -251,6 +262,33 @@
             pauseBtn.textContent = "Continue";
             setStatus("Paused " + fmtDur(currentRec.durationMs));
         }
+    }
+
+    function offerFinish(){
+        if (!isRecording || !mediaRecorder) return;
+        if (!isPaused) {
+            mediaRecorder.pause();
+            currentRec.pausedAt = Date.now();
+            isPaused = true;
+        }
+        document.getElementById("record-btn").classList.add("hidden");
+        document.getElementById("pause-btn").classList.add("hidden");
+        document.getElementById("finish-bar").classList.remove("hidden");
+        setStatus("Add another part, or finish and process this note.");
+    }
+
+    function addAnotherPart(){
+        document.getElementById("finish-bar").classList.add("hidden");
+        document.getElementById("record-btn").classList.remove("hidden");
+        document.getElementById("pause-btn").classList.remove("hidden");
+        togglePause();
+    }
+
+    function finishRecording(){
+        enableNotifications();
+        document.getElementById("finish-bar").classList.add("hidden");
+        document.getElementById("record-btn").classList.remove("hidden");
+        stopRecording();
     }
 
     function stopRecording(){
@@ -336,6 +374,7 @@
             if (res.ok && result && result.ok) {
                 rec.status = "sent"; rec.sentAt = Date.now(); rec.lastError = null; rec.filename = result.filename || rec.filename;
                 await putRec(rec);
+                checkResult(rec);
             } else {
                 throw new Error((result && result.code) ? result.code : ("HTTP " + res.status));
             }
@@ -355,15 +394,50 @@
     }
     async function removeRec(id){
         const recs=await getAllRecs(); const r=recs.find(x=>x.id===id);
-        if (r && r.status!=="sent" && !confirm("Delete this recording? It has NOT been sent and cannot be recovered.")) return;
+        if (r && r.status!=="sent" && r.status!=="ready" && !confirm("Delete this recording? It has NOT been sent and cannot be recovered.")) return;
         await delRec(id); await delChunks(id); renderList(); updateStorage();
     }
     async function clearSent(){
-        const recs=await getAllRecs(); const sent=recs.filter(r=>r.status==="sent");
+        const recs=await getAllRecs(); const sent=recs.filter(r=>r.status==="sent" || r.status==="ready");
         if (!sent.length) return;
         if (!confirm(`Remove ${sent.length} sent recording(s) from this device?`)) return;
         for (const r of sent){ await delRec(r.id); await delChunks(r.id); }
         renderList(); updateStorage();
+    }
+
+    async function githubJson(path, pat){
+        const res = await fetch(`https://api.github.com/repos/${GITHUB_USER}/${GITHUB_REPO}/contents/${path}`, { headers:{ Authorization:`token ${pat}` } });
+        if (res.status===404) return null;
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.message || `GitHub returned ${res.status}`);
+        const bytes = Uint8Array.from(atob(data.content.replace(/\s/g, "")), c => c.charCodeAt(0));
+        return JSON.parse(new TextDecoder().decode(bytes).replace(/^\uFEFF/, ""));
+    }
+
+    async function checkResults(){
+        const pat=localStorage.getItem("notetaker_pat"); if(!pat) return;
+        const recs=await getAllRecs();
+        for(const r of recs.filter(x=>x.status==="sent" && x.filename && !x.result)) await checkResult(r, pat);
+    }
+
+    async function checkResult(rec, pat){
+        try {
+            const key=rec.filename.replace(/\.[^.]+$/, "");
+            const result=await githubJson(`results/${key}.json`, pat||localStorage.getItem("notetaker_pat"));
+            if(!result) return;
+            rec.result=result; rec.status="ready"; await putRec(rec); renderList();
+            setStatus(`Ready: ${rec.projectName||rec.project}`);
+            if("Notification" in window && Notification.permission==="granted") new Notification("NoteTaker: note ready", { body: rec.projectName||rec.project||"Your transcript is ready." });
+        } catch(e){}
+    }
+
+    async function enableNotifications(){
+        if("Notification" in window && Notification.permission==="default") await Notification.requestPermission();
+    }
+
+    async function toggleResult(id){
+        const recs=await getAllRecs(); const r=recs.find(x=>x.id===id); if(!r||!r.result) return;
+        const el=document.getElementById(`result-${id}`); el.classList.toggle("hidden");
     }
 
     // ---------- UI ----------
@@ -371,7 +445,7 @@
         const recs = (await getAllRecs()).sort((a,b)=>b.createdAt-a.createdAt);
         const el = document.getElementById("list");
         if (!recs.length) { el.innerHTML = '<div class="small">No recordings yet.</div>'; return; }
-        const order = { recording:0, unassigned:1, uploading:2, pending:3, failed:4, sent:5 };
+        const order = { recording:0, unassigned:1, uploading:2, pending:3, failed:4, sent:5, ready:6 };
         recs.sort((a,b)=>(order[a.status]-order[b.status]) || (b.createdAt-a.createdAt));
         el.innerHTML = "<h3>Recordings</h3>" + recs.map(r => {
             const label = r.status==="unassigned" ? "UNASSIGNED" : r.status.toUpperCase();
@@ -386,12 +460,14 @@
             let actions = "";
             if (r.status==="unassigned") actions += `<button onclick="assignSend('${r.id}')">Assign & send</button>`;
             if (r.status==="pending" || r.status==="failed") actions += `<button onclick="resend('${r.id}')">Send now</button>`;
+            if (r.status==="ready" && r.result) actions += `<button onclick="toggleResult('${r.id}')">View result</button>`;
             if (r.blob) actions += `<button class="btn-secondary" onclick="downloadRec('${r.id}')">Download</button>`;
             actions += `<button class="btn-secondary" onclick="removeRec('${r.id}')">Delete</button>`;
             return `<div class="item">
                 <div class="top"><span class="title">${escapeHtml(title)}</span>${badge}</div>
                 <div class="meta">${fmtTime(r.createdAt)} · ${durTxt}${size}${att}${tag}</div>
                 ${err}
+                ${r.result ? `<div id="result-${r.id}" class="result hidden"><strong>Summary</strong>\n${escapeHtml(r.result.summary||"")}\n\n<strong>Transcript</strong>\n${escapeHtml(r.result.transcript||"")}</div>` : ""}
                 ${assign}
                 <div class="actions">${actions}</div>
             </div>`;
