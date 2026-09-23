@@ -78,8 +78,12 @@
             <button class="btn-secondary" onclick="processQueue(true)">Retry all</button>
             <button class="btn-secondary" onclick="clearSent()">Clear sent</button>
         </div>
-        <input id="file-input" type="file" accept="audio/*,video/webm,video/mp4" class="hidden" onchange="onFilePicked(event)">
-        <button class="btn-secondary" onclick="document.getElementById('file-input').click()">Upload a recording (from your recorder app)</button>
+        <input id="file-input" type="file" accept="audio/*,image/*,video/webm,video/mp4" class="hidden" onchange="onFilePicked(event)">
+        <input id="photo-input" type="file" accept="image/*" capture="environment" class="hidden" onchange="onFilePicked(event)">
+        <div class="bar">
+            <button class="btn-secondary" onclick="document.getElementById('file-input').click()">Upload File/Audio</button>
+            <button class="btn-secondary" onclick="document.getElementById('photo-input').click()">Take Photo</button>
+        </div>
         <div class="small" id="storage"></div>
         <div class="small"><span class="link" onclick="resetPat()">Reset PAT</span></div>
 
@@ -139,7 +143,7 @@
     function uuid(){ return (crypto.randomUUID ? crypto.randomUUID() : (Date.now()+"-"+Math.random().toString(16).slice(2))); }
     function pickMime(){ const o=["audio/webm;codecs=opus","audio/webm","audio/mp4"]; for(const m of o){ if(window.MediaRecorder && MediaRecorder.isTypeSupported(m)) return m; } return ""; }
     function baseType(m){ return (m && m.indexOf("mp4")>=0) ? "audio/mp4" : "audio/webm"; }
-    function extFor(ct){ return ct==="audio/mp4" ? "m4a" : "webm"; }
+    function extFor(ct){ return ct==="audio/mp4" ? "m4a" : (ct && ct.startsWith("image/") ? ct.split("/")[1].replace("jpeg", "jpg") : "webm"); }
     function fmtSize(b){ if(!b && b!==0) return ""; if(b<1024) return b+" B"; if(b<1048576) return (b/1024).toFixed(0)+" KB"; return (b/1048576).toFixed(1)+" MB"; }
     function fmtDur(ms){ if(!ms) return "0:00"; const s=Math.round(ms/1000); return Math.floor(s/60)+":"+String(s%60).padStart(2,"0"); }
     function fmtTime(ts){ try{ return new Date(ts).toLocaleString(); }catch(e){ return ""; } }
@@ -492,7 +496,10 @@
         setStatus(key ? "Imported. Sending..." : "Imported - choose a project below, then tap Assign & send.");
     }
     async function intakeFile(file, project, projectName, source){
-        const ct = (/(mp4|m4a|aac)/i.test(file.type) || /\.(m4a|mp4|aac)$/i.test(file.name||"")) ? "audio/mp4" : "audio/webm";
+        let ct = file.type;
+        if (!ct || (!ct.startsWith("image/") && !ct.startsWith("audio/") && !ct.startsWith("video/"))) {
+            ct = (/(mp4|m4a|aac)/i.test(file.type) || /\.(m4a|mp4|aac)$/i.test(file.name||"")) ? "audio/mp4" : "audio/webm";
+        }
         const rec = { id: uuid(), project: project||"", projectName: projectName||"", contentType: ct,
                       status: project ? "pending" : "unassigned", createdAt: Date.now(), startedAt: Date.now(),
                       attempts: 0, lastError: null, durationMs: 0, size: file.size, blob: file, source: source||"import" };
