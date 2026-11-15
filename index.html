@@ -33,6 +33,7 @@
         .bar { display: flex; gap: 8px; }
         .bar button { font-size: 14px; padding: 10px; font-weight: 500; }
         .btn-secondary { background: #eef1f5; color: #333; }
+        .cellar-link { display: block; text-align: center; text-decoration: none; padding: 14px; margin: 8px 0; border-radius: 12px; font-size: 16px; font-weight: 600; }
         .hidden { display: none; }
         .small { font-size: 12px; color: var(--muted); text-align: center; margin-top: 6px; }
         .link { color: var(--primary); text-decoration: underline; cursor: pointer; }
@@ -84,6 +85,8 @@
             <button class="btn-secondary" onclick="document.getElementById('file-input').click()">Upload File/Audio</button>
             <button class="btn-secondary" onclick="document.getElementById('photo-input').click()">Take Photo</button>
         </div>
+        <!-- Cellar compute-server dashboard; resolves only inside the owner's Tailscale tailnet -->
+        <a class="btn-secondary cellar-link" href="http://cellar:8765/" target="_blank" rel="noopener">🖥️ Cellar runs</a>
         <div class="small" id="storage"></div>
         <div class="small"><span class="link" onclick="resetPat()">Reset PAT</span></div>
 
